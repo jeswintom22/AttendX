@@ -367,3 +367,101 @@ td {
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
 }
+
+/* =====================
+   DARK MODE
+===================== */
+body.dark {
+    background: linear-gradient(120deg, #020617, #020617);
+    color: #e5e7eb;
+}
+
+body.dark header,
+body.dark .dashboard-header {
+    background: linear-gradient(120deg, #020617, #1e293b);
+}
+
+body.dark .card,
+body.dark .feature-card {
+    background: rgba(30,41,59,0.85);
+    color: #e5e7eb;
+}
+
+body.dark table {
+    background: #020617;
+}
+
+body.dark th {
+    background: #1e293b;
+    color: #e5e7eb;
+}
+
+body.dark td {
+    border-color: #1e293b;
+}
+
+body.dark a {
+    color: #93c5fd;
+}
+
+/* Dark toggle button */
+.theme-toggle {
+    background: rgba(255,255,255,0.2);
+    padding: 8px 14px;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* =====================
+   PROGRESS RINGS
+===================== */
+.progress-ring {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background:
+        conic-gradient(
+            #22c55e calc(var(--percent) * 1%),
+            #e5e7eb 0
+        );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+body.dark .progress-ring {
+    background:
+        conic-gradient(
+            #22c55e calc(var(--percent) * 1%),
+            #1e293b 0
+        );
+    color: white;
+}
+/* =====================
+   STATUS BADGES
+===================== */
+.badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.badge-good {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-warn {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-bad {
+    background: #fee2e2;
+    color: #991b1b;
+}

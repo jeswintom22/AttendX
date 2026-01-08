@@ -3,6 +3,8 @@
 <head>
     <title>AttendX | Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.svg') }}">
+
     <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
 
 </head>
@@ -10,6 +12,10 @@
 
 <!-- HEADER -->
 <div class="dashboard-header">
+    <div class="theme-toggle" onclick="toggleTheme()">🌙 / ☀️</div>
+
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+
     <img src="{{ url_for('static', filename='images/attendx-logo.svg') }}">
     <div class="right">
         Smart Attendance • Admin Panel
@@ -20,6 +26,13 @@
 <div class="dashboard-container">
 
     <div class="feature-grid">
+        <div class="card">
+    <h3>System Overview</h3>
+    <p>📷 Camera Scans: 4 per hour</p>
+    <p>🟢 Active Mode: Smart Attendance</p>
+    <p>⚡ Power Optimized</p>
+</div>
+
 
         <a href="/register-student" class="feature-card">
             <div class="feature-icon">👨‍🎓</div>
