@@ -1,8 +1,14 @@
 import cv2
 import os
+import sys
+import time
 
-name = input("Enter Student Name: ")
-roll = input("Enter Roll Number: ")
+if len(sys.argv) < 3:
+    print("Usage: python register_student.py <name> <roll>")
+    sys.exit(1)
+
+name = sys.argv[1]
+roll = sys.argv[2]
 
 folder_path = f"data/students/{roll}_{name}"
 
@@ -13,8 +19,9 @@ face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
 cap = cv2.VideoCapture(0)  # Use default camera (0)
 count = 0
+start_time = time.time()
 
-print("Press 's' to save face, 'q' to quit")
+print("Starting face capture...")
 
 while True:
     ret, frame = cap.read()
@@ -29,14 +36,10 @@ while True:
         count += 1
         file_name = f"{folder_path}/face_{count}.jpg"
         cv2.imwrite(file_name, face)
-        cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
+        print(f"Face {count} captured")
 
-    cv2.imshow("Student Registration", frame)
-
-    key = cv2.waitKey(1)
-    if key & 0xFF == ord('s'):
-        print("Face captured")
-    elif key & 0xFF == ord('q'):
+    # Capture for 10 seconds or 20 faces
+    if count >= 20 or (time.time() - start_time) > 10:
         break
 
 cap.release()
