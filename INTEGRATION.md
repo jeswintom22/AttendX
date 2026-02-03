@@ -49,3 +49,38 @@ ATTENDX_CORS_ORIGINS=http://localhost:3000
 
 ### Reports
 - `GET /api/reports/export` → downloads Excel file
+
+## Vercel Link-Only Wiring (No Layout Changes)
+
+Wrap each card or step with a link (do not alter layout, cursor, or animations).
+
+### Six Feature Cards (Homepage)
+
+| Card Label | Route |
+|---|---|
+| Register Student | `/register-student` |
+| View Students | `/students` |
+| Class Schedule | `/schedule` |
+| Send Message | `/messages` |
+| Attendance Warnings | `/warnings` |
+| Export Reports | `/reports` |
+
+### "How It Works" Steps
+
+| Step | Route |
+|---|---|
+| Student Registration | `/register-student` |
+| Class Scheduling | `/schedule` |
+| Attendance Tracking | `/schedule` |
+| Analytics & Alerts | `/warnings` |
+| Reports Export | `/reports` |
+
+### Top Nav / CTA (Optional)
+
+| Link | Route |
+|---|---|
+| Dashboard | `/dashboard` |
+| Get Started | `/register-student` |
+| View Demo | `/schedule` |
+
+**Implementation rule:** Wrap the existing card/step container with the link element so all hover/cursor styles remain intact.
