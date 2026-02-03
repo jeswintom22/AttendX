@@ -3,13 +3,24 @@ import base64
 from datetime import date, datetime
 import io
 import logging
+import os
 import sqlite3
 import time
 
 import numpy as np
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.secret_key = "attendx_secret_key"
+app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "None")
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
+
+cors_origins = os.getenv("ATTENDX_CORS_ORIGINS", "https://attendx-future.vercel.app")
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[origin.strip() for origin in cors_origins.split(",") if origin.strip()],
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,6 +96,16 @@ def ensure_schema():
         conn.close()
     except Exception as exc:
         logger.warning("Schema check failed: %s", exc)
+
+
+def json_error(message, status=400):
+    return jsonify({"status": "error", "message": message}), status
+
+
+def require_admin_json():
+    if "admin" not in session:
+        return json_error("Unauthorized", 401)
+    return None
 
 
 def decode_image_data_url(data_url):
@@ -227,6 +248,26 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        session["admin"] = True
+        return jsonify({"status": "ok"})
+
+    logger.info("API login failed for username=%s", username)
+    return json_error("Invalid credentials", 401)
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.pop("admin", None)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/dashboard")
 def dashboard():
     if "admin" not in session:
@@ -278,6 +319,74 @@ def view_students():
     conn.close()
 
     return render_template("view_students.html", students=students)
+
+
+@app.route("/api/students", methods=["GET"])
+def api_students():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM Student ORDER BY roll_no").fetchall()
+    conn.close()
+
+    students = [
+        {
+            "student_id": row["student_id"],
+            "roll_no": row["roll_no"],
+            "name": row["name"],
+            "department": row["department"],
+            "semester": row["semester"],
+        }
+        for row in rows
+    ]
+
+    return jsonify({"status": "ok", "students": students})
+
+
+@app.route("/api/students", methods=["POST"])
+def api_create_student():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    roll = (data.get("roll_no") or "").strip()
+    name = (data.get("name") or "").strip()
+    dept = (data.get("department") or "").strip()
+    sem = (data.get("semester") or "").strip()
+
+    if not roll or not name:
+        return json_error("Roll number and name are required.", 400)
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO Student (roll_no, name, department, semester)
+            VALUES (?, ?, ?, ?)
+            """,
+            (roll, name, dept, sem),
+        )
+        student_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return jsonify(
+            {
+                "status": "ok",
+                "student": {
+                    "student_id": student_id,
+                    "roll_no": roll,
+                    "name": name,
+                    "department": dept,
+                    "semester": sem,
+                },
+            }
+        )
+    except sqlite3.IntegrityError:
+        return json_error("Roll number already exists.", 409)
 
 
 
@@ -363,6 +472,77 @@ def schedule():
     )
 
 
+@app.route("/api/schedule", methods=["GET"])
+def api_schedule():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    day = request.args.get("day") or datetime.today().strftime("%A")
+    if day not in DAY_NAMES:
+        day = datetime.today().strftime("%A")
+    schedules = fetch_schedule_for_day(day)
+    return jsonify({"status": "ok", "day": day, "schedules": schedules})
+
+
+@app.route("/api/schedule", methods=["POST"])
+def api_create_schedule():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    subject_name = (data.get("subject_name") or "").strip()
+    day = data.get("day") or datetime.today().strftime("%A")
+    start = data.get("start_time")
+    end = data.get("end_time")
+    is_free = 1 if data.get("is_free_period") else 0
+
+    if not subject_name or not start or not end:
+        return json_error("All fields are required.", 400)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO Subject (subject_name, total_classes) VALUES (?, 0)",
+        (subject_name,),
+    )
+    row = cursor.execute(
+        "SELECT subject_id FROM Subject WHERE subject_name = ?",
+        (subject_name,),
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        return json_error(f"Subject not found: {subject_name}", 404)
+
+    subject_id = row["subject_id"]
+    cursor.execute(
+        """
+        INSERT INTO ClassSchedule
+        (subject_id, day, start_time, end_time, is_free_period)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (subject_id, day, start, end, is_free),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        {
+            "status": "ok",
+            "schedule": {
+                "subject_id": subject_id,
+                "subject_name": subject_name,
+                "day": day,
+                "start_time": start,
+                "end_time": end,
+                "is_free_period": bool(is_free),
+            },
+        }
+    )
+
+
 @app.route("/send-message", methods=["GET", "POST"])
 def send_message():
     if "admin" not in session:
@@ -385,6 +565,26 @@ def send_message():
         return render_template("send_message.html", msg="Message sent successfully")
 
     return render_template("send_message.html")
+
+
+@app.route("/api/messages", methods=["POST"])
+def api_send_message():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return json_error("Message content is required.", 400)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO Message (content) VALUES (?)", (content,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "ok"})
 
 
 @app.route("/display-message")
@@ -415,6 +615,22 @@ def warnings():
     )
 
 
+@app.route("/api/warnings")
+def api_warnings():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    subject_warnings, exam_warnings = get_attendance_summary()
+    return jsonify(
+        {
+            "status": "ok",
+            "subject_warnings": subject_warnings,
+            "exam_warnings": exam_warnings,
+        }
+    )
+
+
 from flask import send_file
 from logic.export_excel import export_attendance_excel
 
@@ -426,6 +642,17 @@ def export_excel():
     file_name = "attendance_report.xlsx"
     export_attendance_excel(file_name)
 
+    return send_file(file_name, as_attachment=True)
+
+
+@app.route("/api/reports/export")
+def api_export_excel():
+    auth_error = require_admin_json()
+    if auth_error:
+        return auth_error
+
+    file_name = "attendance_report.xlsx"
+    export_attendance_excel(file_name)
     return send_file(file_name, as_attachment=True)
 
 @app.route("/face-register", methods=["GET"])
@@ -496,6 +723,11 @@ def face_register_capture():
     load_face_cache(force=True)
     logger.info("Face registered for student_id=%s", student_id)
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/face-register/capture", methods=["POST"])
+def api_face_register_capture():
+    return face_register_capture()
 
 
 @app.route("/recognize", methods=["POST"])
@@ -612,6 +844,11 @@ def recognize():
     return jsonify(
         {"status": "ok", "recognized": [], "message": "No matches found."}
     )
+
+
+@app.route("/api/recognize", methods=["POST"])
+def api_recognize():
+    return recognize()
 
 if __name__ == "__main__":
     app.run(debug=True)
