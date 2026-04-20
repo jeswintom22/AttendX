@@ -1,66 +1,51 @@
-from db_utils import get_db_connection
+from db_utils import read_connection
+
+
+def _percentage(present, total):
+    return round((present / total) * 100, 2) if total else 0
+
 
 def subject_attendance(student_id, subject_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with read_connection() as conn:
+        row = conn.execute(
+            """
+            WITH daily AS (
+                SELECT date, SUM(status) AS present_count
+                FROM Attendance
+                WHERE student_id = ? AND subject_id = ?
+                GROUP BY date
+            )
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN present_count >= 3 THEN 1 ELSE 0 END) AS present
+            FROM daily
+            """,
+            (student_id, subject_id),
+        ).fetchone()
 
-    total_row = cursor.execute(
-        "SELECT COUNT(DISTINCT date) FROM Attendance WHERE subject_id=?",
-        (subject_id,)
-    ).fetchone()
-    total = total_row[0] if total_row else 0
-
-    present_row = cursor.execute(
-        """
-        SELECT COUNT(DISTINCT date)
-        FROM Attendance
-        WHERE subject_id=? AND student_id=? AND status=1
-        """,
-        (subject_id, student_id)
-    ).fetchone()
-    present = present_row[0] if present_row else 0
-
-    conn.close()
-
-    if total == 0:
-        return 0
-
-    return round((present / total) * 100, 2)
+    total = row["total"] if row and row["total"] else 0
+    present = row["present"] if row and row["present"] else 0
+    return _percentage(present, total)
 
 
 def overall_attendance(student_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with read_connection() as conn:
+        row = conn.execute(
+            """
+            WITH daily AS (
+                SELECT subject_id, date, SUM(status) AS present_count
+                FROM Attendance
+                WHERE student_id = ?
+                GROUP BY subject_id, date
+            )
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN present_count >= 3 THEN 1 ELSE 0 END) AS present
+            FROM daily
+            """,
+            (student_id,),
+        ).fetchone()
 
-    total_row = cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT subject_id, date
-            FROM Attendance
-            WHERE student_id=?
-        )
-        """,
-        (student_id,)
-    ).fetchone()
-    total = total_row[0] if total_row else 0
-
-    present_row = cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT subject_id, date
-            FROM Attendance
-            WHERE student_id=? AND status=1
-        )
-        """,
-        (student_id,)
-    ).fetchone()
-    present = present_row[0] if present_row else 0
-
-    conn.close()
-
-    if total == 0:
-        return 0
-
-    return round((present / total) * 100, 2)
+    total = row["total"] if row and row["total"] else 0
+    present = row["present"] if row and row["present"] else 0
+    return _percentage(present, total)

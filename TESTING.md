@@ -3,24 +3,42 @@
 ## Manual Checklist
 
 1. Create or activate a virtual environment:
-   - `python -m venv .venv`
+   - `py -3.10 -m venv .venv`
    - `.venv\Scripts\activate`
 2. Install dependencies:
+   - `.venv\Scripts\python -m pip install --upgrade pip`
    - `.venv\Scripts\python -m pip install -r requirements.txt`
-3. Initialize the database:
+   - `.venv\Scripts\python check_face_stack.py`
+3. Set local environment variables:
+   - `$env:ATTENDX_SECRET_KEY="dev-secret"`
+   - `$env:ATTENDX_ADMIN_USERNAME="admin"`
+   - `$env:ATTENDX_ADMIN_PASSWORD="admin123"`
+4. Initialize the database:
    - `.venv\Scripts\python db\create_db.py`
    - `.venv\Scripts\python db\insert_sample_data.py`
-4. Run the app:
+5. Run automated tests:
+   - `.venv\Scripts\python -m unittest discover -s tests -v`
+6. Run the app:
    - `.venv\Scripts\python app.py`
-5. Login with `admin` / `admin123`.
-6. Register a student face:
+7. Login with `admin` / `admin123`.
+8. Register a student face:
    - Go to `/face-register`
    - Start camera and click **Capture and Register**
-7. Create a schedule entry for today at `/schedule`.
-8. Click **Start Camera** on a schedule row and verify:
+9. Create a schedule entry for today at `/schedule`.
+10. Click **Start Camera** on a schedule row and verify:
    - Video opens in a modal
    - Recognized students are listed
    - Attendance is recorded in the DB
+
+## Automated Coverage
+
+The test suite creates an isolated temporary SQLite database and verifies:
+
+- WAL mode initialization.
+- Transaction rollback.
+- Retry behavior while a write lock is held.
+- Subject deduplication before creating the normalized unique index.
+- Student, schedule, and attendance route behavior.
 
 ## DB Verification
 

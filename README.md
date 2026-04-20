@@ -24,9 +24,13 @@ AttendX is a comprehensive attendance management system that uses facial recogni
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10 or 3.11 recommended
 - Webcam/Camera device
 - Git
+
+The face recognition dependency stack includes compiled packages (`dlib`,
+`Pillow`, and `numpy`). Python 3.13 is not recommended for this project because
+those packages may install without working binary extensions on Windows.
 
 ### Setup Instructions
 
@@ -38,29 +42,56 @@ AttendX is a comprehensive attendance management system that uses facial recogni
 
 2. **Create virtual environment**
    ```bash
-   python -m venv .venv
+   py -3.10 -m venv .venv
    .venv\Scripts\activate  # On Windows
    ```
 
 3. **Install dependencies**
    ```bash
-   pip install -r requirements.txt
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
+   python check_face_stack.py
    ```
 
-4. **Set up the database**
+4. **Configure environment variables**
+   ```bash
+   set ATTENDX_SECRET_KEY=change-me
+   set ATTENDX_ADMIN_USERNAME=admin
+   set ATTENDX_ADMIN_PASSWORD=change-me-too
+   ```
+
+5. **Set up the database**
    ```bash
    python db/create_db.py
    python db/insert_sample_data.py
    ```
 
-5. **Run the application**
+6. **Run the application**
    ```bash
    python app.py
    ```
 
-6. **Access the application**
+7. **Access the application**
    - Open your browser and go to `http://127.0.0.1:5000`
-   - Default login: admin/admin123
+   - Default development login: `admin` / `admin123`
+
+## Production Configuration
+
+Set these environment variables before deployment:
+
+```
+ATTENDX_SECRET_KEY=<strong random secret>
+ATTENDX_ADMIN_USERNAME=<admin username>
+ATTENDX_ADMIN_PASSWORD=<strong password>
+ATTENDX_DB_PATH=/absolute/path/to/attendance.db
+ATTENDX_CORS_ORIGINS=https://your-frontend.example
+ATTENDX_SESSION_COOKIE_SECURE=true
+ATTENDX_SESSION_COOKIE_SAMESITE=None
+ATTENDX_RECOGNITION_MAX_WORKERS=1
+ATTENDX_FACE_CACHE_TTL_SECONDS=60
+```
+
+SQLite is now configured with WAL mode, busy timeouts, transaction rollback, and retry handling for short write-lock contention. For a larger multi-user deployment, replace SQLite with PostgreSQL so writes can scale beyond SQLite's single-writer model.
 
 ## Frontend Integration
 
@@ -157,7 +188,7 @@ See `INTEGRATION.md` for CORS and cookie configuration.
 
 Run the test suite:
 ```bash
-python tests/test_sample.py
+python -m unittest discover -s tests -v
 ```
 
 ## Contributing

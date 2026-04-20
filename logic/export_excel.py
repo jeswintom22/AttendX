@@ -1,60 +1,62 @@
+import re
+
 from openpyxl import Workbook
-from db_utils import get_db_connection
-from logic.calculate_attendance import subject_attendance, overall_attendance
+
+from services import get_export_data
+
+
+def _percentage(values):
+    total = values.get("total", 0) if values else 0
+    present = values.get("present", 0) if values else 0
+    return round((present / total) * 100, 2) if total else 0
+
+
+def _safe_sheet_title(title, used):
+    cleaned = re.sub(r"[\[\]:*?/\\]", "_", title or "Subject").strip() or "Subject"
+    cleaned = cleaned[:31]
+    candidate = cleaned
+    counter = 1
+    while candidate in used:
+        suffix = f" {counter}"
+        candidate = f"{cleaned[:31 - len(suffix)]}{suffix}"
+        counter += 1
+    used.add(candidate)
+    return candidate
+
 
 def export_attendance_excel(file_path="attendance_report.xlsx"):
+    data = get_export_data()
     wb = Workbook()
     ws = wb.active
     ws.title = "Overall Attendance"
 
-    ws.append([
-        "Roll No",
-        "Name",
-        "Department",
-        "Semester",
-        "Overall Attendance (%)"
-    ])
+    ws.append(["Roll No", "Name", "Department", "Semester", "Overall Attendance (%)"])
+    for student in data["students"]:
+        ws.append(
+            [
+                student["roll_no"],
+                student["name"],
+                student["department"],
+                student["semester"],
+                _percentage(data["overall"].get(student["student_id"])),
+            ]
+        )
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    used_titles = {ws.title}
+    for subject in data["subjects"]:
+        sheet_title = _safe_sheet_title(subject["subject_name"], used_titles)
+        subject_ws = wb.create_sheet(title=sheet_title)
+        subject_ws.append(["Roll No", "Name", "Attendance %"])
 
-    students = cursor.execute("SELECT * FROM Student").fetchall()
-
-    for s in students:
-        overall = overall_attendance(s["student_id"])
-        ws.append([
-            s["roll_no"],
-            s["name"],
-            s["department"],
-            s["semester"],
-            overall
-        ])
-
-    conn.close()
-
-    add_subject_wise_sheets(wb)
-    wb.save(file_path)
-
-
-def add_subject_wise_sheets(wb):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    subjects = cursor.execute("SELECT * FROM Subject").fetchall()
-    students = cursor.execute("SELECT * FROM Student").fetchall()
-
-    for sub in subjects:
-        ws = wb.create_sheet(title=sub["subject_name"])
-        ws.append(["Roll No", "Name", "Attendance %"])
-
-        for s in students:
-            percent = subject_attendance(
-                s["student_id"], sub["subject_id"]
+        for student in data["students"]:
+            subject_ws.append(
+                [
+                    student["roll_no"],
+                    student["name"],
+                    _percentage(
+                        data["totals"].get((student["student_id"], subject["subject_id"]))
+                    ),
+                ]
             )
-            ws.append([
-                s["roll_no"],
-                s["name"],
-                percent
-            ])
 
-    conn.close()
+    wb.save(file_path)
