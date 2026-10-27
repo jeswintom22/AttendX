@@ -1,5 +1,6 @@
 import importlib
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -281,6 +282,68 @@ class AttendXTestCase(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(count, 1)
 
+
+    def _csrf_token(self, path):
+        page = self.client.get(path).get_data(as_text=True)
+        match = re.search(r'name="csrf_token" value="([^"]+)"', page)
+        self.assertIsNotNone(match, f"no csrf token rendered on {path}")
+        return match.group(1)
+
+    def test_form_posts_require_csrf_token(self):
+        services = importlib.import_module("services")
+        forged_posts = {
+            "/send-message": {"content": "Forged announcement"},
+            "/register-student": {
+                "roll": "CSRF-1",
+                "name": "Mallory",
+                "department": "CSE",
+                "semester": "5",
+            },
+            "/schedule": {
+                "subject_name": "Forged",
+                "day": "Monday",
+                "start_time": "09:00",
+                "end_time": "10:00",
+            },
+            "/logout": {},
+            "/": {"username": "admin", "password": "admin123"},
+        }
+        for path, data in forged_posts.items():
+            response = self.client.post(path, data=data)
+            self.assertEqual(response.status_code, 400, path)
+        self.assertEqual(services.get_latest_message(), "No message")
+        self.assertEqual(self.client.get("/api/students").get_json()["students"], [])
+        self.assertEqual(
+            self.client.get("/api/schedule?day=Monday").get_json()["schedules"], []
+        )
+        self.assertEqual(self.client.get("/api/session").get_json()["authenticated"], True)
+
+        token = self._csrf_token("/send-message")
+        response = self.client.post(
+            "/send-message",
+            data={"content": "Real announcement", "csrf_token": token},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Message sent successfully", response.get_data(as_text=True))
+
+    def test_non_json_api_posts_require_csrf_token(self):
+        response = self.client.post(
+            "/api/messages",
+            data='{"content": "Forged"}',
+            content_type="text/plain",
+        )
+        self.assertEqual(response.status_code, 400)
+
+        response = self.client.post("/api/messages", json={"content": "From frontend"})
+        self.assertEqual(response.status_code, 200)
+
+    def test_logout_is_post_only_and_token_protected(self):
+        self.assertEqual(self.client.get("/logout").status_code, 405)
+
+        token = self._csrf_token("/dashboard")
+        response = self.client.post("/logout", data={"csrf_token": token})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get("/api/session").get_json()["authenticated"], False)
 
 if __name__ == "__main__":
     unittest.main()

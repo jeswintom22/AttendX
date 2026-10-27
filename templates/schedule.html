@@ -54,10 +54,13 @@
                 <span class="nav-icon"></span>
                 Classroom Display
             </a>
-            <a class="nav-item" href="/logout">
-                <span class="nav-icon"></span>
-                Logout
-            </a>
+            <form method="POST" action="/logout" class="logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="nav-item nav-button">
+                    <span class="nav-icon"></span>
+                    Logout
+                </button>
+            </form>
         </div>
     </aside>
 
@@ -83,6 +86,7 @@
             <h3>Class Schedule Upload</h3>
 
             <form method="POST" class="row g-3 mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="col-md-6">
                     <label class="form-label">Subject Name</label>
                     <input type="text" name="subject" class="form-control" required>

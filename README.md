@@ -108,6 +108,16 @@ SESSION_COOKIE_SAMESITE=None
 For production, set `ATTENDX_CORS_ORIGINS` to your hosted frontend URL and keep
 `SESSION_COOKIE_SECURE=true`.
 
+### CSRF protection
+
+All HTML form posts (including `/logout`, which is POST-only) require the
+Flask-WTF CSRF token rendered by `{{ csrf_token() }}`. Requests with a JSON body
+(`Content-Type: application/json`) are exempt, because browsers only send them
+cross-site after a CORS preflight limited to `ATTENDX_CORS_ORIGINS`. A separate
+frontend must therefore send every write as JSON; other content types without a
+token are rejected with `400`. Leave `ATTENDX_SESSION_COOKIE_SAMESITE` at `Lax`
+unless the frontend is on a different site and truly needs `None`.
+
 ## Usage
 
 ### Student Registration

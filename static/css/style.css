@@ -873,6 +873,36 @@ body.dark .dashboard-footer {
     text-decoration: none;
 }
 
+.logout-form {
+    margin: 0;
+}
+
+.nav-item.nav-button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.nav-item.nav-button:hover {
+    background: white;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.link-button:hover {
+    text-decoration: underline;
+}
+
 .nav-item.active {
     background: #0f172a;
     color: white;
