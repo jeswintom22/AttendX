@@ -90,7 +90,11 @@ class AttendXTestCase(unittest.TestCase):
             self.assertEqual(response.status_code, 401)
         blocked = client.post("/api/login", json={"username": "admin", "password": "admin123"})
         self.assertEqual(blocked.status_code, 429)
-        form_blocked = client.post("/", data={"username": "admin", "password": "admin123"})
+        page = client.get("/").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        form_blocked = client.post(
+            "/", data={"username": "admin", "password": "admin123", "csrf_token": token}
+        )
         self.assertEqual(form_blocked.status_code, 429)
 
     def test_wal_mode_enabled(self):
