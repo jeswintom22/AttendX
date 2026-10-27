@@ -1,6 +1,11 @@
+import hmac
 import logging
 import os
+import secrets
 import tempfile
+import threading
+import time
+from collections import deque
 
 from flask import (
     Flask,
@@ -38,11 +43,30 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("attendx")
 
+DEV_MODE = os.getenv("ATTENDX_DEV", "").strip().lower() in {"1", "true", "yes"}
+
 secret_key = os.getenv("ATTENDX_SECRET_KEY")
-is_production = os.getenv("FLASK_ENV", "").lower() == "production"
-if is_production and not secret_key:
-    raise RuntimeError("ATTENDX_SECRET_KEY is required in production.")
-app.secret_key = secret_key or "attendx-dev-secret-change-me"
+admin_password = os.getenv("ATTENDX_ADMIN_PASSWORD")
+missing_settings = [
+    name
+    for name, value in (
+        ("ATTENDX_SECRET_KEY", secret_key),
+        ("ATTENDX_ADMIN_PASSWORD", admin_password),
+    )
+    if not value
+]
+if missing_settings and not DEV_MODE:
+    raise RuntimeError(
+        f"{', '.join(missing_settings)} must be set. "
+        "Set ATTENDX_DEV=1 only for local development to allow insecure defaults."
+    )
+if not secret_key:
+    logger.warning("ATTENDX_DEV is set: using a random per-process session secret.")
+    secret_key = secrets.token_hex(32)
+if not admin_password:
+    logger.warning("ATTENDX_DEV is set: using the default development admin password.")
+    admin_password = "admin123"
+app.secret_key = secret_key
 
 app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("ATTENDX_SESSION_COOKIE_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = (
@@ -77,7 +101,12 @@ def enforce_csrf():
 
 
 ADMIN_USERNAME = os.getenv("ATTENDX_ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ATTENDX_ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = admin_password
+
+LOGIN_MAX_FAILURES = max(1, int(os.getenv("ATTENDX_LOGIN_MAX_FAILURES", "5")))
+LOGIN_WINDOW_SECONDS = max(1.0, float(os.getenv("ATTENDX_LOGIN_WINDOW_SECONDS", "300")))
+_login_failures = {}
+_login_failures_lock = threading.Lock()
 
 try:
     import face_recognition  # type: ignore
@@ -118,6 +147,50 @@ def api_payload():
     return request.get_json(silent=True) or {}
 
 
+def credentials_valid(username, password):
+    username_ok = hmac.compare_digest(username.encode("utf-8"), ADMIN_USERNAME.encode("utf-8"))
+    password_ok = hmac.compare_digest(password.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))
+    return username_ok and password_ok
+
+
+def _client_key():
+    return request.remote_addr or "unknown"
+
+
+def _recent_failures(key, now):
+    failures = _login_failures.get(key)
+    if failures is None:
+        return None
+    while failures and now - failures[0] > LOGIN_WINDOW_SECONDS:
+        failures.popleft()
+    if not failures:
+        _login_failures.pop(key, None)
+        return None
+    return failures
+
+
+def login_rate_limited():
+    now = time.monotonic()
+    with _login_failures_lock:
+        failures = _recent_failures(_client_key(), now)
+        return failures is not None and len(failures) >= LOGIN_MAX_FAILURES
+
+
+def record_login_failure():
+    now = time.monotonic()
+    key = _client_key()
+    with _login_failures_lock:
+        failures = _recent_failures(key, now)
+        if failures is None:
+            failures = _login_failures[key] = deque()
+        failures.append(now)
+
+
+def clear_login_failures():
+    with _login_failures_lock:
+        _login_failures.pop(_client_key(), None)
+
+
 @app.errorhandler(AppError)
 def handle_app_error(exc):
     logger.warning("Application error: %s", exc.message)
@@ -135,12 +208,19 @@ def handle_database_busy(exc):
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        if login_rate_limited():
+            return (
+                render_template("login.html", error="Too many failed attempts. Try again later."),
+                429,
+            )
         username = clean_text(request.form.get("username"), "Username", max_length=120)
         password = clean_text(request.form.get("password"), "Password", max_length=120)
 
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        if credentials_valid(username, password):
+            clear_login_failures()
             session["admin"] = True
             return redirect(url_for("dashboard"))
+        record_login_failure()
         return render_template("login.html", error="Invalid credentials")
 
     return render_template("login.html")
@@ -148,14 +228,18 @@ def login():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
+    if login_rate_limited():
+        return json_error("Too many failed attempts. Try again later.", 429)
     data = api_payload()
     username = clean_text(data.get("username"), "Username", max_length=120)
     password = clean_text(data.get("password"), "Password", max_length=120)
 
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    if credentials_valid(username, password):
+        clear_login_failures()
         session["admin"] = True
         return jsonify({"status": "ok"})
 
+    record_login_failure()
     logger.info("API login failed for username=%s", username)
     return json_error("Invalid credentials", 401)
 
