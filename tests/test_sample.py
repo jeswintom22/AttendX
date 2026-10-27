@@ -28,6 +28,8 @@ class AttendXTestCase(unittest.TestCase):
         self.db_path = os.path.join(self.tmpdir.name, "attendance.db")
         os.environ["ATTENDX_DB_PATH"] = self.db_path
         os.environ["ATTENDX_SECRET_KEY"] = "test-secret"
+        os.environ["ATTENDX_ADMIN_PASSWORD"] = "admin123"
+        os.environ.pop("ATTENDX_DEV", None)
         os.environ["ATTENDX_DB_BUSY_TIMEOUT_MS"] = "50"
         os.environ["ATTENDX_DB_WRITE_RETRIES"] = "5"
         os.environ["ATTENDX_RECOGNITION_MIN_INTERVAL_SECONDS"] = "0"
@@ -48,6 +50,47 @@ class AttendXTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.tmpdir.cleanup()
+
+    def _reload_app(self, **env):
+        for name in ("ATTENDX_SECRET_KEY", "ATTENDX_ADMIN_PASSWORD", "ATTENDX_DEV"):
+            os.environ.pop(name, None)
+        os.environ.update(env)
+        sys.modules.pop("app", None)
+        return importlib.import_module("app")
+
+    def test_startup_requires_secret_key_and_admin_password(self):
+        with self.assertRaises(RuntimeError):
+            self._reload_app(ATTENDX_ADMIN_PASSWORD="pw")
+        with self.assertRaises(RuntimeError):
+            self._reload_app(ATTENDX_SECRET_KEY="secret")
+        with self.assertRaises(RuntimeError):
+            self._reload_app(FLASK_ENV="production")
+        os.environ.pop("FLASK_ENV", None)
+
+    def test_dev_flag_allows_defaults_with_random_secret(self):
+        module = self._reload_app(ATTENDX_DEV="1")
+        self.assertNotEqual(module.app.secret_key, "attendx-dev-secret-change-me")
+        self.assertEqual(len(module.app.secret_key), 64)
+
+    def test_cookie_signed_with_old_default_key_is_rejected(self):
+        from flask.sessions import SecureCookieSessionInterface
+
+        forger = importlib.import_module("flask").Flask("forger")
+        forger.secret_key = "attendx-dev-secret-change-me"
+        cookie = SecureCookieSessionInterface().get_signing_serializer(forger).dumps({"admin": True})
+        client = self.app.test_client()
+        client.set_cookie("session", cookie)
+        self.assertEqual(client.get("/api/students").status_code, 401)
+
+    def test_login_rate_limited_after_repeated_failures(self):
+        client = self.app.test_client()
+        for _ in range(self.app_module.LOGIN_MAX_FAILURES):
+            response = client.post("/api/login", json={"username": "admin", "password": "wrong"})
+            self.assertEqual(response.status_code, 401)
+        blocked = client.post("/api/login", json={"username": "admin", "password": "admin123"})
+        self.assertEqual(blocked.status_code, 429)
+        form_blocked = client.post("/", data={"username": "admin", "password": "admin123"})
+        self.assertEqual(form_blocked.status_code, 429)
 
     def test_wal_mode_enabled(self):
         with self.db_utils.read_connection() as conn:

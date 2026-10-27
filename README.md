@@ -73,7 +73,11 @@ those packages may install without working binary extensions on Windows.
 
 7. **Access the application**
    - Open your browser and go to `http://127.0.0.1:5000`
-   - Default development login: `admin` / `admin123`
+   - The app refuses to start unless `ATTENDX_SECRET_KEY` and `ATTENDX_ADMIN_PASSWORD` are set.
+     For local development only, set `ATTENDX_DEV=1` to allow a random per-process session
+     secret and the development login `admin` / `admin123`. Never set `ATTENDX_DEV` in production.
+   - Login attempts are limited per client IP (`ATTENDX_LOGIN_MAX_FAILURES`, default 5, within
+     `ATTENDX_LOGIN_WINDOW_SECONDS`, default 300).
 
 ## Production Configuration
 
