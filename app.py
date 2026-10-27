@@ -14,6 +14,7 @@ from flask import (
     url_for,
 )
 from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect
 
 from app_errors import AppError, ConflictError, DatabaseBusyError
 import repositories
@@ -58,6 +59,22 @@ if cors_origins:
         supports_credentials=True,
         origins=[origin.strip() for origin in cors_origins.split(",") if origin.strip()],
     )
+
+# Form posts must carry a CSRF token. JSON requests are exempt because a
+# cross-site page can only send application/json after a CORS preflight,
+# which is limited to ATTENDX_CORS_ORIGINS.
+app.config["WTF_CSRF_CHECK_DEFAULT"] = False
+csrf = CSRFProtect(app)
+
+
+@app.before_request
+def enforce_csrf():
+    if not app.config.get("WTF_CSRF_ENABLED", True):
+        return
+    if request.is_json:
+        return
+    csrf.protect()
+
 
 ADMIN_USERNAME = os.getenv("ATTENDX_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ATTENDX_ADMIN_PASSWORD", "admin123")
@@ -228,7 +245,7 @@ def api_create_student():
     return jsonify({"status": "ok", "student": created})
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.pop("admin", None)
     return redirect(url_for("login"))

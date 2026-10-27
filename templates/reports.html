@@ -50,10 +50,13 @@
                 <span class="nav-icon"></span>
                 Classroom Display
             </a>
-            <a class="nav-item" href="/logout">
-                <span class="nav-icon"></span>
-                Logout
-            </a>
+            <form method="POST" action="/logout" class="logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="nav-item nav-button">
+                    <span class="nav-icon"></span>
+                    Logout
+                </button>
+            </form>
         </div>
     </aside>
 

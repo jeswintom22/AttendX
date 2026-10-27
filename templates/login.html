@@ -16,6 +16,7 @@
     <p class="auth-sub">Smart Attendance Management System</p>
 
     <form method="POST" class="auth-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-field">
             <label for="username">Username</label>
             <input id="username" type="text" name="username" placeholder="Enter your username" required>
